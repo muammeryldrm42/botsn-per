@@ -1,0 +1,27 @@
+/** Shared scoring thresholds. The method page and the scorer both read these. */
+export const THRESHOLDS = {
+  weights: {
+    momentum: 35,
+    liquidity: 20,
+    age: 15,
+    market: 15,
+    safety: 15,
+  },
+  displayLiquidityUsd: 8_000,
+  callLiquidityUsd: 12_000,
+  collapseLiquidityUsd: 2_000,
+  callScore: 64,
+  strongScore: 80,
+  watchScore: 48,
+  partialCoverageScore: 70,
+  veryHighRiskScore: 74,
+  minPrintsH1: 20,
+  minVolumeH1Usd: 5_000,
+  hitGainPct: 25,
+  matureMinutes: 30,
+  callWindowHours: 12,
+  trackHours: 48,
+  maxTopHolderPct: 45,
+  establishedMcapUsd: 25_000_000,
+  establishedAgeDays: 14,
+} as const;
