@@ -95,11 +95,11 @@ export default function MethodPage() {
           verisi bu iki kaynaktan gelir, böylece RPC kotasına takılınmaz.
         </p>
         <p>
-          GitHub Actions her 5 dakikada (GitHub geciktirebilir) tarayıcıyı çalıştırır ve sonucu <code>data</code>{" "}
-          dalındaki tek <code>snapshot.json</code> dosyasına yazar. Dal her seferinde tek commit olarak güncellenir;
-          çağrı geçmişi dosyanın içindedir, git geçmişinde birikmez. Vercel sitesi bu dosyayı okur, her taramada
-          yeniden derlenmez. İstekler arasında sonuç 60 saniye önbelleğe alınır. Tarama 3 dakikadan eskiyse sayfa,
-          Jupiter'ın ücretsiz fiyat ucuyla görünen fiyatı tazeler; asıl kayıt yine Actions'ta durur.
+          Site, kayıt iki dakikadan eskiyse taramayı kendi sunucusunda yapar. Sonuç Vercel'in anahtarsız çalışma
+          önbelleğine yazılır; çağrı geçmişi bir sonraki istekte oradan okunur ve yeni deploy ile silinmez. GitHub
+          Actions yedektir: <code>*/5</code> zamanlaması bu repoda saatlerce atlandığı için iş, başladığında yaklaşık
+          5,5 saat boyunca 3 dakikada bir tarar ve <code>data</code> dalına yazar. Ziyaret olmasa da o döngü dosyayı
+          taze tutar. Döngü düşerse site yine kendi taramasına döner.
         </p>
         <p>
           İstekler zaman aşımı, 429/5xx için artan bekleme ve RugCheck için token başına kısa ara ile sınırlıdır.

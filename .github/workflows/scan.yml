@@ -2,8 +2,9 @@ name: Solana tarama
 
 on:
   schedule:
-    # GitHub UTC kullanır. Ücretsiz planda cron birkaç dakika gecikebilir.
-    - cron: "*/5 * * * *"
+    # */5 bu repoda saatlerce atlandı. Bu tetik yalnızca uzun döngüyü başlatır.
+    # GitHub geciktirse bile başlayan iş ~5,5 saat boyunca 3 dakikada bir tarar.
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -14,9 +15,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scan:
+  keep:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 355
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
@@ -38,24 +39,13 @@ jobs:
           curl -fsSL -A "PER-Sinyal-Action" \
             "https://raw.githubusercontent.com/${{ github.repository }}/data/snapshot.json" \
             -o /tmp/previous-snapshot.json \
-            || echo "Önceki snapshot yok"
+          || curl -fsSL -A "PER-Sinyal-Action" -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/snapshot.json?ref=data" \
+            -o /tmp/previous-snapshot.json \
+          || echo "Önceki snapshot yok"
 
-      - name: Tara
-        run: npx tsx scripts/scan.ts
+      - name: Sürekli tara
+        run: npx tsx scripts/keep-scanning.ts
         env:
-          SNAPSHOT_IN: /tmp/previous-snapshot.json
-          SNAPSHOT_OUT: /tmp/snapshot.json
-
-      - name: data dalına yaz
-        run: |
-          set -euo pipefail
-          test -s /tmp/snapshot.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan data-publish
-          git reset --quiet
-          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-          cp /tmp/snapshot.json ./snapshot.json
-          git add snapshot.json
-          git commit -m "tarama: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push --force origin HEAD:data
+          KEEP_MINUTES: "330"
+          INTERVAL_SECONDS: "180"

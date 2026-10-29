@@ -141,6 +141,56 @@ export function nextCalls(
   return { calls: capCalls(refreshed), opened };
 }
 
+function sameCallWindow(left: CallRecord, right: CallRecord): boolean {
+  return left.mint === right.mint && Math.abs(Date.parse(left.calledAt) - Date.parse(right.calledAt)) < WINDOW_MS;
+}
+
+/** Collapse duplicate calls two writers opened for the same mint inside the 12 hour window. */
+export function dedupeCalls(calls: CallRecord[]): CallRecord[] {
+  const sorted = [...calls].sort(
+    (left, right) => Date.parse(left.calledAt) - Date.parse(right.calledAt) || left.id.localeCompare(right.id),
+  );
+  const kept: CallRecord[] = [];
+  for (const call of sorted) {
+    const index = kept.findIndex((item) => sameCallWindow(item, call));
+    if (index === -1) {
+      kept.push(call);
+      continue;
+    }
+    kept[index] = foldCalls(kept[index]!, call);
+  }
+  return capCalls(kept);
+}
+
+function foldCalls(earlier: CallRecord, later: CallRecord): CallRecord {
+  const newerCheck = Date.parse(later.lastCheckedAt) >= Date.parse(earlier.lastCheckedAt) ? later : earlier;
+  const rugged = earlier.status === "coktu" || later.status === "coktu";
+  const folded: CallRecord = {
+    ...newerCheck,
+    id: earlier.id,
+    calledAt: earlier.calledAt,
+    entryPrice: earlier.entryPrice,
+    entryLiquidityUsd: earlier.entryLiquidityUsd,
+    entryMarketCapUsd: earlier.entryMarketCapUsd,
+    maxPrice: Math.max(earlier.maxPrice, later.maxPrice),
+    minPrice: Math.min(earlier.minPrice, later.minPrice),
+    lastPrice: newerCheck.lastPrice,
+    status: rugged ? "coktu" : newerCheck.status,
+    closeReason: rugged
+      ? earlier.status === "coktu"
+        ? earlier.closeReason
+        : later.closeReason
+      : newerCheck.closeReason,
+  };
+  const checkedAt = Date.parse(newerCheck.lastCheckedAt);
+  return refreshCall(folded, {
+    price: folded.lastPrice,
+    liquidityUsd: null,
+    rugged: false,
+    nowMs: Number.isFinite(checkedAt) ? checkedAt : Date.parse(earlier.calledAt),
+  });
+}
+
 export function capCalls(calls: CallRecord[], max = 180): CallRecord[] {
   const sorted = [...calls].sort((a, b) => Date.parse(b.calledAt) - Date.parse(a.calledAt));
   if (sorted.length <= max) return sorted;

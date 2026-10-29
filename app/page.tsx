@@ -3,13 +3,14 @@ import { StatsPanel } from "@/components/StatsPanel";
 import { agoLabel } from "@/lib/format";
 import { loadSnapshot } from "@/lib/loadSnapshot";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function HomePage() {
   const { snapshot, source } = await loadSnapshot();
   const now = Date.now();
   const ageMin = (now - Date.parse(snapshot.updatedAt)) / 60_000;
-  const stale = Number.isFinite(ageMin) && ageMin > 20;
+  const stale = Number.isFinite(ageMin) && ageMin > 5;
 
   return (
     <div className="layout">
@@ -23,8 +24,7 @@ export default async function HomePage() {
         </p>
         {stale && (
           <p className="stale">
-            Son tarama {Math.round(ageMin)} dakikadan eski. GitHub Actions içindeki “Solana tarama” işi gecikmiş veya
-            henüz hiç çalışmamış olabilir.
+            Son kayıt {Math.round(ageMin)} dakikadan eski. Bu istekteki tarama tamamlanamadı; sayfayı yenile.
           </p>
         )}
         {source === "yedek" && (
@@ -32,8 +32,7 @@ export default async function HomePage() {
         )}
         {snapshot.tokens.length === 0 ? (
           <div className="empty">
-            Henüz listelenecek token yok. İlk tarama bittikten sonra bu sayfa dolar. Actions sekmesinden “Solana
-            tarama” işini bir kez elle çalıştırman yeterli.
+            Henüz listelenecek token yok. Sayfa açıkken sunucu kendisi tarar; birkaç saniye sonra yenile.
           </div>
         ) : (
           <SignalBoard tokens={snapshot.tokens} filteredOut={snapshot.filteredOut} now={now} />

@@ -1,82 +1,92 @@
 import bundledJson from "../data/snapshot.json";
-import { attachOpenCalls, computeStats, refreshCall } from "./calls";
 import { API_SNAPSHOT_URL, RAW_SNAPSHOT_URL, USER_AGENT } from "./constants";
-import { fetchJupiterPrices } from "./sources/jupiter";
+import { mergeLedgers, needsScan } from "./ledger";
+import { readStoredLedger, writeStoredLedger } from "./ledgerStore";
+import { runScan } from "./scan/run";
 import { isSnapshot, normalizeSnapshot } from "./snapshot";
 import type { Snapshot } from "./types";
 
-async function readJson(url: string, revalidate: number, headers?: Record<string, string>): Promise<Snapshot | null> {
-  const response = await fetch(url, {
-    headers: { "user-agent": USER_AGENT, accept: "application/json", ...headers },
-    next: { revalidate },
-  });
-  if (!response.ok) return null;
-  const json: unknown = await response.json();
-  if (!isSnapshot(json)) return null;
-  return normalizeSnapshot(json);
+export type SnapshotSource = "anlik" | "canli" | "yedek";
+
+type Loaded = { snapshot: Snapshot; source: SnapshotSource };
+
+type Slot = { snapshot: Snapshot | null; inflight: Promise<Loaded> | null };
+
+const SLOT = "__perLedgerSlot";
+
+function slot(): Slot {
+  const root = globalThis as typeof globalThis & { [SLOT]?: Slot };
+  if (!root[SLOT]) root[SLOT] = { snapshot: null, inflight: null };
+  return root[SLOT];
 }
 
 async function readRemote(): Promise<Snapshot | null> {
-  const fromRaw = await readJson(RAW_SNAPSHOT_URL, 60);
-  if (fromRaw) return fromRaw;
-  // The raw CDN can cache a 404 for a new branch. The contents API is the
-  // keyless fallback and is cached for five minutes so a public site stays
-  // under the unauthenticated GitHub rate limit.
-  return readJson(API_SNAPSHOT_URL, 300, { accept: "application/vnd.github.raw" });
-}
-
-async function overlayLivePrices(snapshot: Snapshot): Promise<Snapshot> {
-  const updated = Date.parse(snapshot.updatedAt);
-  if (!Number.isFinite(updated) || Date.now() - updated < 3 * 60_000) return snapshot;
-  const mints = [
-    ...new Set([
-      ...snapshot.tokens.slice(0, 40).map((token) => token.mint),
-      ...snapshot.calls.filter((call) => call.status === "acik").map((call) => call.mint),
-    ]),
-  ].slice(0, 40);
-  if (!mints.length) return snapshot;
-  try {
-    const prices = await fetchJupiterPrices(mints, 60);
-    if (!Object.keys(prices).length) return snapshot;
-    const nowMs = Date.now();
-    const calls = snapshot.calls.map((call) => {
-      const price = prices[call.mint];
-      if (price == null) return call;
-      return refreshCall(call, { price, liquidityUsd: null, rugged: false, nowMs });
-    });
-    const tokens = attachOpenCalls(
-      snapshot.tokens.map((token) => (prices[token.mint] ? { ...token, priceUsd: prices[token.mint]! } : token)),
-      calls,
-    );
-    return {
-      ...snapshot,
-      tokens,
-      calls,
-      stats: computeStats(calls, nowMs),
-      livePriceAt: new Date(nowMs).toISOString(),
-    };
-  } catch {
-    return snapshot;
-  }
-}
-
-export async function loadSnapshot(): Promise<{ snapshot: Snapshot; source: "canli" | "yedek" }> {
-  const bundled = normalizeSnapshot(bundledJson as Snapshot);
-  let snapshot = bundled;
-  let source: "canli" | "yedek" = "yedek";
-  try {
-    const remote = await readRemote();
-    if (remote) {
-      const remoteAt = Date.parse(remote.updatedAt);
-      const bundledAt = Date.parse(bundled.updatedAt);
-      if (!Number.isFinite(bundledAt) || remoteAt >= bundledAt) {
-        snapshot = remote;
-        source = "canli";
-      }
+  const attempts: Array<{ url: string; headers?: Record<string, string> }> = [
+    { url: RAW_SNAPSHOT_URL },
+    { url: API_SNAPSHOT_URL, headers: { accept: "application/vnd.github.raw" } },
+  ];
+  for (const attempt of attempts) {
+    try {
+      const response = await fetch(attempt.url, {
+        cache: "no-store",
+        headers: { "user-agent": USER_AGENT, accept: "application/json", ...attempt.headers },
+      });
+      if (!response.ok) continue;
+      const json: unknown = await response.json();
+      if (!isSnapshot(json)) continue;
+      return normalizeSnapshot(json);
+    } catch {
+      continue;
     }
-  } catch {
-    snapshot = bundled;
-    source = "yedek";
   }
-  return { snapshot: await overlayLivePrices(snapshot), source };
+  return null;
+}
+
+function sourceOf(snapshot: Snapshot): SnapshotSource {
+  return snapshot.producedBy === "site" ? "anlik" : "canli";
+}
+
+async function compute(): Promise<Loaded> {
+  const bundled = normalizeSnapshot(bundledJson as Snapshot);
+  const [stored, remote] = await Promise.all([readStoredLedger(), readRemote()]);
+  const memory = slot().snapshot;
+  const ledger = mergeLedgers([memory, stored, remote, bundled]);
+  const freshBase = mergeLedgers([memory, stored, remote]);
+  if (freshBase && !needsScan(freshBase.updatedAt, Date.now())) {
+    slot().snapshot = freshBase;
+    if (!stored || Date.parse(stored.updatedAt) < Date.parse(freshBase.updatedAt)) {
+      await writeStoredLedger(freshBase);
+    }
+    return { snapshot: freshBase, source: sourceOf(freshBase) };
+  }
+
+  try {
+    const scanned = await runScan(ledger);
+    const snapshot = mergeLedgers([{ ...scanned, producedBy: "site" }, ledger]);
+    if (!snapshot) throw new Error("Tarama boş döndü");
+    snapshot.producedBy = "site";
+    snapshot.tokens = scanned.tokens;
+    snapshot.filteredOut = scanned.filteredOut;
+    snapshot.sources = scanned.sources;
+    snapshot.meta = scanned.meta;
+    snapshot.updatedAt = scanned.updatedAt;
+    slot().snapshot = snapshot;
+    await writeStoredLedger(snapshot);
+    return { snapshot, source: "anlik" };
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    const fallback = ledger ?? bundled;
+    slot().snapshot = fallback;
+    return { snapshot: fallback, source: remote ? "canli" : "yedek" };
+  }
+}
+
+/** Fresh board for the request. A stored snapshot younger than two minutes is reused. */
+export async function loadSnapshot(): Promise<Loaded> {
+  const state = slot();
+  if (state.inflight) return state.inflight;
+  state.inflight = compute().finally(() => {
+    state.inflight = null;
+  });
+  return state.inflight;
 }
