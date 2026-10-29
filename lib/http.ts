@@ -31,6 +31,8 @@ export async function fetchJson<T>(
       };
       if (opts?.revalidate != null && process.env.NEXT_RUNTIME) {
         init.next = { revalidate: opts.revalidate };
+      } else {
+        init.cache = "no-store";
       }
       const res = await fetch(url, init);
       if (res.status === 404 || res.status === 400) {

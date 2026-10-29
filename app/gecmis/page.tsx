@@ -4,7 +4,8 @@ import { pct } from "@/lib/format";
 import { loadSnapshot } from "@/lib/loadSnapshot";
 
 export const metadata: Metadata = { title: "Çağrı geçmişi" };
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function HistoryPage() {
   const { snapshot } = await loadSnapshot();

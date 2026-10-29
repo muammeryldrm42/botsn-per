@@ -1,6 +1,5 @@
 import { nextCalls, attachOpenCalls, computeStats, type CallCandidate } from "../calls";
 import { DENY_MINTS, DENY_SYMBOLS, tokenLinks } from "../constants";
-import { sleep } from "../http";
 import { uniq } from "../num";
 import { scoreToken } from "../score";
 import { fetchDexList, fetchDexTokens } from "../sources/dexscreener";
@@ -12,8 +11,8 @@ import { isEstablished, mergeSafety, mergeToken, safetyFromAudit, type PartialTo
 import { fetchRugcheck } from "./rugcheck";
 
 const TOKEN_CAP = 70;
-const RUG_LIMIT = 12;
-const RUG_DELAY_MS = 400;
+const RUG_LIMIT = 10;
+const RUG_CONCURRENCY = 3;
 
 async function timed<T>(
   sources: Record<string, SourceStatus>,
@@ -269,17 +268,23 @@ export async function runScan(previous: Snapshot | null, now = new Date()): Prom
   const rugStarted = Date.now();
   let rugcheckFetched = 0;
   let rugcheckFailed = 0;
-  for (const mint of toCheck) {
-    try {
-      const safety = await fetchRugcheck(mint);
-      cache[mint] = { fetchedAt: new Date(nowMs).toISOString(), safety };
-      rugcheckFetched += 1;
-    } catch (error) {
-      rugcheckFailed += 1;
-      console.warn(`RugCheck ${mint}: ${error instanceof Error ? error.message : error}`);
+  let rugCursor = 0;
+  async function rugWorker() {
+    while (rugCursor < toCheck.length) {
+      const mint = toCheck[rugCursor];
+      rugCursor += 1;
+      if (!mint) return;
+      try {
+        const safety = await fetchRugcheck(mint);
+        cache[mint] = { fetchedAt: new Date(nowMs).toISOString(), safety };
+        rugcheckFetched += 1;
+      } catch (error) {
+        rugcheckFailed += 1;
+        console.warn(`RugCheck ${mint}: ${error instanceof Error ? error.message : error}`);
+      }
     }
-    await sleep(RUG_DELAY_MS);
   }
+  await Promise.all(Array.from({ length: Math.min(RUG_CONCURRENCY, toCheck.length) }, () => rugWorker()));
   sources.rugcheck = {
     ok: rugcheckFailed === 0 || rugcheckFetched > 0,
     ms: Date.now() - rugStarted,

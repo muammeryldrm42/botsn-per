@@ -195,6 +195,8 @@ export interface SafetyCacheEntry {
 export interface Snapshot {
   version: 1;
   updatedAt: string;
+  /** Set when the Vercel app itself ran the scanner. Absent on GitHub Actions snapshots. */
+  producedBy?: "site";
   /** Set by the website when it overlays a fresher public price. Not persisted by the scanner. */
   livePriceAt?: string | null;
   sources: Record<string, SourceStatus>;

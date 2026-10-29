@@ -17,6 +17,8 @@ export const THRESHOLDS = {
   veryHighRiskScore: 74,
   minPrintsH1: 20,
   minVolumeH1Usd: 5_000,
+  /** Serve a stored snapshot when it is younger than this. Otherwise scan on the request. */
+  freshMs: 2 * 60 * 1000,
   hitGainPct: 25,
   matureMinutes: 30,
   callWindowHours: 12,

@@ -29,17 +29,16 @@ pump.fun sitesi bot koruması istediği için doğrudan kullanılmaz. Pump üst�
 
 ## 24 saat nasıl döner
 
-Vercel Hobby cron'u günde bir kezle sınırlıdır ve sürekli tarama için uygun değildir. Kalıcı kayıt da sunucusuz fonksiyonun belleğinde durmaz. Bu yüzden tarama **GitHub Actions** üzerinde çalışır:
+İki sınır yüzünden tempo siteye alındı:
 
-1. `.github/workflows/scan.yml` her 5 dakikada bir (ve elle) `npm test` ardından `scripts/scan.ts` çalıştırır.
-2. Script önceki `snapshot.json` dosyasını okur, yeni turu bunun üstüne işler, çağrı geçmişini taşır.
-3. Sonuç, `main` dalına değil **`data`** dalındaki tek `snapshot.json` dosyasına yazılır. Dal her seferinde tek commit'tir; git geçmişi şişmez. Çağrıların hafızası dosyanın içindedir.
-4. Vercel'deki Next.js uygulaması bu dosyayı `https://raw.githubusercontent.com/muammeryldrm42/botsn-per/data/snapshot.json` adresinden okur. Sonuç 60 saniye önbelleğe alınır. Yeni dalda bu adres kısa süre 404 önbelleğine takılırsa aynı dosya, anahtarsız GitHub içerik ucundan alınır (`api.github.com`, beş dakika önbellek; saatlik kotayı zorlamamak için). O da olmazsa repodaki gömülü görüntü kullanılır. Tarama 3 dakikadan eskiyse görünen fiyat Jupiter ile tazelenir; asıl kayıt yine Actions'tadır.
-5. Repodaki `data/snapshot.json` yalnızca yedektir. `data` dalı okunamazsa panel onu gösterir.
+- Vercel Hobby cron'u günde birden sık çalışamaz. Daha sık ifade deploy'u düşürür.
+- GitHub `schedule: */5` bu repoda saatlerce hiç tur başlatmadı. GitHub bu kuyruğu garanti etmez; yoğunlukta işi geciktirir veya sessizce atlar.
 
-GitHub, ücretsiz depolarda cron'u yoğunlukta birkaç dakika geciktirebilir. Repo herkese açıktır; Vercel gizli token olmadan ham dosyayı okuyabilir. `data` dalını Vercel'de production branch yapma. Production **`main`** kalmalı.
+Site açıkken veri en fazla iki dakika eskidir. Kayıt daha eskiyse Vercel fonksiyonu taramayı kendisi yapar (Hobby süre sınırı 300 saniye, bu tarama onun altında kalır). Çağrı geçmişi, anahtar gerektirmeyen Vercel runtime cache'e yazılır. Bu önbellek deploy ile silinmez. Aynı mint için on iki saat içindeki çift çağrılar tek kayıtta birleşir.
 
-Zamanlanmış iş, workflow dosyası `main` dalında olduktan sonra çalışır. Yeni repolarda Actions ilk seferde elle açılmayı isteyebilir.
+GitHub Actions yedektir. `17 * * * *` tetikleyicisi uzun bir döngü başlatır: yaklaşık 5,5 saat boyunca 3 dakikada bir tarar ve `data` dalındaki tek `snapshot.json` dosyasına yazar. Ziyaret olmasa da dosya taze kalır. Döngü düşünce site yine kendi taramasına döner. `data` dalını production branch yapma.
+
+Ortam değişkeni yok.
 
 ## Vercel'e kurma
 
@@ -52,11 +51,9 @@ Ortam değişkeni yok. Root dizin repo kökü. Framework Next.js.
 5. **Framework Preset** olarak **Next.js** kalsın. **Root Directory** `./` olsun.
 6. **Environment Variables** bölümüne hiçbir şey ekleme.
 7. Production branch `main` olsun. `data` dalını seçme.
-8. **Deploy** düğmesine bas.
-9. Deploy bitince GitHub'da repoyu aç → **Actions** → **Solana tarama**.
-10. Actions kapalıysa **I understand my workflows, go ahead and enable them** düğmesine bas.
-11. Sağdaki **Run workflow** menüsünü aç, branch `main` kalsın, **Run workflow** de. İlk tur bir iki dakika sürer.
-12. Siteyi aç. Üstte son tarama saati görünür. Bundan sonra aynı iş yaklaşık her 5 dakikada bir `data` dalını günceller; Vercel her turda yeniden derlenmez.
+8. **Deploy** düğmesine bas. Proje zaten bağlıysa `main`'e birleştirmek yayını kendisi yapar; bu adımları tekrarlama.
+9. Siteyi aç. İlk açılış taramayı kendisi bitirir ve üstte son tarama saati görünür. Kimse tıklamadan da sayfa taze kalır.
+10. İsteğe bağlı: GitHub → **Actions** → **Solana tarama** → **Run workflow**. Bu, ziyaret olmasa da `data` dalını güncelleyen yedek döngüyü hemen başlatır. Site için zorunlu değildir.
 
 Yerelde:
 

@@ -8,7 +8,8 @@ import { COVERAGE_LABEL, RISK_LABEL, STATUS_LABEL, TIER_LABEL } from "@/lib/labe
 import { loadSnapshot } from "@/lib/loadSnapshot";
 import type { TokenView } from "@/lib/types";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 

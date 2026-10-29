@@ -24,7 +24,7 @@ export function StatsPanel({
 }: {
   snapshot: Snapshot;
   now: number;
-  source: "canli" | "yedek";
+  source: "anlik" | "canli" | "yedek";
 }) {
   const { stats } = snapshot;
   const hit = stats.hitRate == null ? "—" : pct(stats.hitRate * 100, 0);
@@ -60,7 +60,11 @@ export function StatsPanel({
         %50'den fazla geri verdi. Bu bir kazanç vaadi değil.
       </p>
       <p className="hint">
-        {source === "canli" ? "Veri, data dalındaki son taramadan." : "Uzak tarama okunamadı; depodaki yedek görüntü kullanılıyor."}{" "}
+        {source === "anlik"
+          ? "Liste bu sunucuda, halka açık API'lerden az önce tarandı."
+          : source === "canli"
+            ? "Veri, data dalındaki son taramadan ve hâlâ taze."
+            : "Uzak tarama okunamadı; depodaki yedek görüntü kullanılıyor."}{" "}
         Bu tur {snapshot.meta.discovered} adaydan {snapshot.meta.scored} tanesi skorlandı, {snapshot.tokens.length}{" "}
         tanesi listede. RugCheck sorgusu: {snapshot.meta.rugcheckFetched}.
       </p>
